@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Earthquake Survival</title>
+    <style>
+        /* CSS RESET & BASE */
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background: #000000; color: #ffffff; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; touch-action: none; }
+        
+        .container { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
+        
+        /* HEADER & STATS */
+        h2 { text-align: center; margin: 5px 0; color: #00ff88; font-size: 1.2rem; text-shadow: 0 0 10px rgba(0,255,136,0.3); letter-spacing: 1px; }
+        .info-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .stat-box { background: #111; border: 1px solid #333; padding: 8px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .stat-label { font-size: 10px; color: #888; display: block; text-transform: uppercase; margin-bottom: 2px; }
+        .stat-value { font-size: 18px; font-weight: bold; color: #00ff88; transition: 0.2s; }
+        .panic { color: #ff4444 !important; animation: timerPanic 0.3s infinite; }
+        
+        @keyframes timerPanic {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* GAME AREA */
+        .canvas-wrapper { position: relative; width: 100%; border-radius: 15px; overflow: hidden; border: 2px solid #333; background: #0a0a0a; box-shadow: 0 0 20px rgba(0,255,136,0.1); }
+        canvas { display: block; width: 100%; height: auto; background: #111; }
+        
+        /* Red Vignette during Earthquake */
+        #vignette {
+            position: absolute; inset: 0; 
+            box-shadow: inset 0 0 100px rgba(255,0,0,0);
+            pointer-events: none; transition: 0.2s; z-index: 5;
+        }
+        .shaking #vignette { box-shadow: inset 0 0 120px rgba(255,0,0,0.7); animation: pulse 0.1s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 100% { opacity: 1; } }
+
+        /* MOBILE CONTROLS */
+        .controls-area { display: grid; grid-template-columns: 1fr; gap: 15px; margin-top: 10px; }
+        .d-pad { display: grid; grid-template-areas: ". up ." "left down right"; gap: 8px; justify-content: center; }
+        .dir-btn { width: 60px; height: 60px; background: #1a1a1a; border: 2px solid #333; color: white; border-radius: 15px; font-size: 24px; display: flex; align-items: center; justify-content: center; transition: 0.1s; }
+        .dir-btn:active { background: #00ff88; color: #000; border-color: #00ff88; transform: scale(0.95); }
+        
+        .main-btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 14px; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
+        .main-btn:active { transform: scale(0.98); }
+
+        /* MODAL */
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; padding: 20px; backdrop-filter: blur(5px); }
+        .modal { background: #111; border: 2px solid #00ff88; padding: 25px; border-radius: 20px; width: 100%; max-width: 350px; text-align: center; box-shadow: 0 0 30px rgba(0,255,136,0.2); }
+        .modal h3 { color: #ff4444; margin: 0 0 10px; font-size: 28px; text-transform: uppercase; }
+        input#playerName { width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: #fff; border-radius: 8px; margin: 15px 0; text-align: center; font-size: 16px; outline: none; }
+        input#playerName:focus { border-color: #00ff88; }
+        
+        .lb-list { list-style: none; padding: 0; margin: 15px 0; text-align: left; border-top: 1px solid #333; }
+        .lb-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222; font-size: 14px; }
+        .lb-item span:last-child { color: #00ff88; font-weight: bold; }
+
+        /* TUTORIAL OVERLAY */
+        #tutorialOverlay { display: flex; }
+        .tutor-icon { font-size: 60px; margin-bottom: 15px; animation: bounce 1s infinite alternate; }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-15px); } }
+
+        .win-notif { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #00ff88; color: #000; padding: 12px 35px; border-radius: 50px; font-weight: bold; display: none; animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 10; font-size: 1.2rem; }
+        @keyframes pop { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div id="tutorialOverlay" class="overlay">
+    <div class="modal">
+        <div class="tutor-icon">🏠🏃‍♂️</div>
+        <h3>QUAKE ALERT</h3>
+        <p style="font-size: 16px; line-height: 1.5; color: #ccc;">Earthquake warning! <br> <b>Get under the desk</b> (orange ball) before time runs out to survive!</p>
+        <button class="main-btn" id="tutorStartBtn" style="background:#00ff88; color:#000; margin-top: 15px;">START SIMULATION</button>
+    </div>
+</div>
+
+<div class="container">
+    <h2>EARTHQUAKE SURVIVAL</h2>
+
+    <div class="info-bar">
+        <div class="stat-box"><span class="stat-label">Level</span><span id="lvlDisplay" class="stat-value">1</span></div>
+        <div class="stat-box"><span class="stat-label">Score</span><span id="scoreDisplay" class="stat-value">0</span></div>
+        <div class="stat-box"><span class="stat-label">Time</span><span id="timerDisplay" class="stat-value">0.0</span></div>
+    </div>
+
+    <div class="canvas-wrapper" id="shakeWrapper">
+        <div id="vignette"></div>
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div id="winMessage" class="win-notif">SAFE! ✅</div>
+    </div>
+
+    <div class="controls-area">
+        <div class="d-pad">
+            <div class="dir-btn" style="grid-area: up" id="btnUp">▲</div>
+            <div class="dir-btn" style="grid-area: left" id="btnLeft">◀</div>
+            <div class="dir-btn" style="grid-area: down" id="btnDown">▼</div>
+            <div class="dir-btn" style="grid-area: right" id="btnRight">▶</div>
+        </div>
+    </div>
+</div>
+
+<div id="gameOverModal" class="overlay">
+    <div class="modal">
+        <h3>DIED! 💀</h3>
+        <p style="color: #888;">Your Score:</p>
+        <p id="finalScore" style="color:#00ff88; font-weight:bold; font-size:32px; margin: 5px 0;">0</p>
+        <input type="text" id="playerName" placeholder="Enter Your Name..." maxlength="10">
+        <button class="main-btn" id="saveBtn" style="background:#00ff88; color:#000;">SAVE & RESTART</button>
+        <div id="leaderboardContent" class="lb-list"></div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const shakeWrapper = document.getElementById('shakeWrapper');
+        
+        let state = { score: 0, level: 1, timer: 0, gempa: false, dead: false, magnitude: 5 };
+        let player = { x: 200, y: 350, r: 12 };
+        let meja = { x: 0, y: 0, w: 80, h: 80 };
+        let decor = [];
+        let particles = [];
+
+        // Audio 1.mp3 (Lose) & 2.mp3 (Win)
+        const snd = {
+            win: new Audio('2.mp3'),
+            lose: new Audio('1.mp3'),
+            shake: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_73937748a0.mp3')
+        };
+
+        function isOverlap(r1, r2, padding = 15) {
+            return !(r1.x + r1.w + padding < r2.x || 
+                     r1.x > r2.x + r2.w + padding || 
+                     r1.y + r1.h + padding < r2.y || 
+                     r1.y > r2.y + r2.h + padding);
+        }
+
+        function createParticles() {
+            if (!state.gempa) return;
+            if (Math.random() > 0.3) return;
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 3 + 1,
+                life: 1,
+                vx: (Math.random() - 0.5) * 2,
+                vy: Math.random() * 2 + 1
+            });
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function drawParticles() {
+            ctx.fillStyle = "rgba(200, 200, 200, 0.5)";
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function initLevel() {
+            meja.x = Math.random() * (canvas.width - 120) + 20;
+            meja.y = Math.random() * (canvas.height - 250) + 50;
+
+            const decorItems = [
+                { w: 70, h: 100, c: '#3e2723', t: 'CABINET' },
+                { w: 100, h: 60, c: '#263238', t: 'WHITEBOARD' },
+                { w: 60, h: 60, c: '#4e342e', t: 'SHELF' }
+            ];
+
+            decor = [];
+            
+            decorItems.forEach(item => {
+                let placed = false;
+                let attempts = 0;
+                while (!placed && attempts < 100) {
+                    let testPos = {
+                        x: Math.random() * (canvas.width - item.w - 20) + 10,
+                        y: Math.random() * (canvas.height - item.h - 120) + 20,
+                        w: item.w, h: item.h
+                    };
+
+                    let collides = isOverlap(testPos, meja, 30);
+
+                    if (!collides) {
+                        for (let d of decor) {
+                            if (isOverlap(testPos, d, 20)) {
+                                collides = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!collides) {
+                        decor.push({ ...item, x: testPos.x, y: testPos.y });
+                        placed = true;
+                    }
+                    attempts++;
+                }
+            });
+
+            player.x = 200; player.y = 360;
+            state.timer = Math.max(1.0, 5.0 - (state.level * 0.4));
+            state.magnitude = 5 + (state.level * 5);
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('scoreDisplay').innerText = state.score;
+            document.getElementById('lvlDisplay').innerText = state.level;
+            
+            const timerEl = document.getElementById('timerDisplay');
+            timerEl.innerText = state.timer.toFixed(2);
+            
+            if (state.timer > 0 && state.timer < 1.5) {
+                timerEl.classList.add('panic');
+            } else {
+                timerEl.classList.remove('panic');
+            }
+        }
+
+        function checkCollision(nx, ny) {
+            // Circle to AABB Collision
+            for (let d of decor) {
+                let closestX = Math.max(d.x, Math.min(nx, d.x + d.w));
+                let closestY = Math.max(d.y, Math.min(ny, d.y + d.h));
+                let distanceX = nx - closestX;
+                let distanceY = ny - closestY;
+                let distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
+                if (distanceSquared < (player.r * player.r)) return true;
+            }
+            return false;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            
+            let shakeX = 0, shakeY = 0;
+            if (state.gempa) {
+                shakeX = (Math.random()-0.5)*state.magnitude;
+                shakeY = (Math.random()-0.5)*state.magnitude;
+                ctx.translate(shakeX, shakeY);
+                shakeWrapper.classList.add('shaking');
+                createParticles();
+            } else {
+                shakeWrapper.classList.remove('shaking');
+            }
+
+            // Grid
+            ctx.strokeStyle = "#1a1a1a";
+            ctx.lineWidth = 1;
+            for(let i=0; i<400; i+=40) {
+                ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,400); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(400,i); ctx.stroke();
+            }
+
+            // Draw Furniture
+            decor.forEach(d => {
+                ctx.fillStyle = d.c;
+                ctx.fillRect(d.x, d.y, d.w, d.h);
+                ctx.strokeStyle = "rgba(255,255,255,0.1)";
+                ctx.strokeRect(d.x, d.y, d.w, d.h);
+                
+                ctx.fillStyle = "rgba(255,255,255,0.7)";
+                ctx.font = "bold 9px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(d.t, d.x + d.w/2, d.y + d.h/2 + 4);
+            });
+
+            // Safe Zone (Desk)
+            ctx.fillStyle = "#00ff8811";
+            ctx.fillRect(meja.x, meja.y, meja.w, meja.h);
+            ctx.strokeStyle = "#00ff88";
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(meja.x, meja.y, meja.w, meja.h);
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = "#00ff88"; ctx.font = "bold 10px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("SAFE ZONE (DESK)", meja.x + meja.w/2, meja.y + meja.h/2 + 5);
+
+            // Particles
+            updateParticles();
+            drawParticles();
+
+            // Player (Orange)
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.r, 0, Math.PI*2);
+            ctx.fillStyle = "#ff9900"; ctx.fill();
+            ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+            
+            // Eye for detail
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(player.x - 4, player.y - 3, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(player.x + 4, player.y - 3, 2, 0, Math.PI*2); ctx.fill();
+
+            ctx.restore();
+        }
+
+        const moveState = { up: false, down: false, left: false, right: false };
+        const setupBtn = (id, key) => {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); moveState[key] = true; });
+            el.addEventListener('touchend', () => moveState[key] = false);
+            el.addEventListener('mousedown', () => moveState[key] = true);
+            el.addEventListener('mouseup', () => moveState[key] = false);
+        };
+        setupBtn('btnUp', 'up'); setupBtn('btnDown', 'down');
+        setupBtn('btnLeft', 'left'); setupBtn('btnRight', 'right');
+
+        // Keyboard support
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w') moveState.up = true;
+            if (e.key === 'ArrowDown' || e.key === 's') moveState.down = true;
+            if (e.key === 'ArrowLeft' || e.key === 'a') moveState.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') moveState.right = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w') moveState.up = false;
+            if (e.key === 'ArrowDown' || e.key === 's') moveState.down = false;
+            if (e.key === 'ArrowLeft' || e.key === 'a') moveState.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') moveState.right = false;
+        });
+
+        function gameLoop() {
+            if (!state.dead) {
+                let speed = 4.0;
+                let nextX = player.x;
+                let nextY = player.y;
+
+                if (moveState.up) nextY -= speed;
+                if (moveState.down) nextY += speed;
+                if (moveState.left) nextX -= speed;
+                if (moveState.right) nextX += speed;
+
+                // Check collision before moving
+                if (!checkCollision(nextX, player.y)) {
+                    player.x = Math.max(player.r, Math.min(400 - player.r, nextX));
+                }
+                if (!checkCollision(player.x, nextY)) {
+                    player.y = Math.max(player.r, Math.min(400 - player.r, nextY));
+                }
+
+                if (state.gempa) {
+                    state.timer -= 1/60;
+                    if (state.timer <= 0) { state.timer = 0; checkSurvival(); }
+                }
+                draw(); updateUI();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function checkSurvival() {
+            state.gempa = false;
+            const safe = (player.x > meja.x && player.x < meja.x + meja.w && 
+                          player.y > meja.y && player.y < meja.y + meja.h);
+            if (safe) {
+                snd.win.play();
+                state.score += (10 * state.level); state.level++;
+                document.getElementById('winMessage').style.display = 'block';
+                setTimeout(() => { 
+                    document.getElementById('winMessage').style.display = 'none'; 
+                    initLevel(); 
+                    state.gempa = true;
+                    snd.shake.play();
+                }, 1000);
+            } else {
+                snd.lose.play(); state.dead = true;
+                document.getElementById('gameOverModal').style.display = 'flex';
+                document.getElementById('finalScore').innerText = state.score;
+                const lb = JSON.parse(localStorage.getItem('gempaLB_Pro_EN') || "[]");
+                document.getElementById('leaderboardContent').innerHTML = lb.map((i, idx) => `<div class="lb-item"><span>${idx+1}. ${i.name}</span><span>${i.score}</span></div>`).join('');
+            }
+        }
+
+        document.getElementById('tutorStartBtn').onclick = () => {
+            document.getElementById('tutorialOverlay').style.display = 'none';
+            if (!state.gempa && !state.dead) { 
+                state.gempa = true; 
+                snd.shake.play();
+            }
+        };
+
+        document.getElementById('saveBtn').onclick = () => {
+            const name = document.getElementById('playerName').value || "Anon";
+            let lb = JSON.parse(localStorage.getItem('gempaLB_Pro_EN') || "[]");
+            lb.push({ name, score: state.score });
+            lb.sort((a,b) => b.score - a.score);
+            localStorage.setItem('gempaLB_Pro_EN', JSON.stringify(lb.slice(0, 5)));
+            location.reload();
+        };
+
+        initLevel();
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
